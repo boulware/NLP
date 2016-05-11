@@ -1,9 +1,13 @@
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
 
+#include <SFGUI/SFGUI.hpp>
+#include <SFGUI/Widgets.hpp>
+
 #include <iostream>
 #include <fstream>
 #include <cstdint>
+//#include <cmath>
 
 #include <string>
 #include <vector>
@@ -300,7 +304,7 @@ private:
     
     sf::RectangleShape mLine;
 public:
-    lexeme_relationship_line() : mLine(sf::Vector2f(10.f, 4.f))
+    lexeme_relationship_line() : mLine(sf::Vector2f(1.f, 4.f))
     {
         mLine.setFillColor(sf::Color::Red);
     }
@@ -318,6 +322,23 @@ public:
 float Distance(const sf::Vector2f& Source, const sf::Vector2f& Dest)
 {
     return pow(pow(Dest.x - Source.x, 2.f) + pow(Dest.y - Source.y, 2.f), 0.5f);
+} 
+
+float VectorLength(const sf::Vector2f& Vector)
+{
+    return Distance(sf::Vector2f(0.f, 0.f), Vector);
+}
+
+sf::Vector2f DirectionVector(sf::Vector2f Source, sf::Vector2f Dest)
+{
+    return (Dest - Source) / Distance(Dest, Source);
+}
+
+float VectorAngle(sf::Vector2f Vector)
+{
+    sf::Vector2f ReferenceVector(1.f, 0.f);
+
+    return atan2(Vector.y, Vector.x);
 }
 
 class visual_grammar;
@@ -350,8 +371,9 @@ public:
         mLexemes.emplace(LexemeID, lexeme(Type, Lemma, InflectionTable));;
     }
 
-    void CreateLexemeRelationship(uint16_t SourceLexemeID, uint16_t TargetLexemeID,
-                                  lexeme_relationship_type RelationshipType)
+    void CreateLexemeRelationship(uint16_t SourceLexemeID, 
+                                  lexeme_relationship_type RelationshipType,
+                                  uint16_t TargetLexemeID)
     {
         mLexemeRelationshipCount++;
         mLexemeRelationships.emplace(mLexemeRelationshipCount,
@@ -378,10 +400,11 @@ public:
         mLexemeNodes.emplace(LexemeID, lexeme_node(lexeme(Type, Lemma, InflectionTable), 50.f));
     }
     
-    void CreateLexemeRelationship(uint16_t SourceLexemeID, uint16_t TargetLexemeID,
-                                  lexeme_relationship_type RelationshipType)
+    void CreateLexemeRelationship(uint16_t SourceLexemeID, 
+                                  lexeme_relationship_type RelationshipType,
+                                  uint16_t TargetLexemeID)
     {
-        grammar::CreateLexemeRelationship(SourceLexemeID, TargetLexemeID, RelationshipType);
+        grammar::CreateLexemeRelationship(SourceLexemeID, RelationshipType, TargetLexemeID);
 
         mLexemeRelationshipLines.emplace(mLexemeRelationshipCount, lexeme_relationship_line());
     }
@@ -406,6 +429,10 @@ public:
                         }
                     }
                 }
+                if(Event.mouseButton.button == sf::Mouse::Right)
+                {
+//                    CreateLexeme(
+                }
             }
             if(Event.type == sf::Event::MouseButtonReleased)
             {
@@ -428,10 +455,26 @@ public:
             lexeme_relationship_line& LRLine = kv.second;
             lexeme_relationship& LR = mLexemeRelationships.at(kv.first);
 
-            sf::Vector2f SourceNodePosition = mLexemeNodes[LR.SourceID].getPosition();
+            const sf::Vector2f SourceNodePosition = mLexemeNodes[LR.SourceID].getPosition();
+            const sf::Vector2f TargetNodePosition = mLexemeNodes[LR.TargetID].getPosition();
+            const sf::Vector2f EdgeDirectedVector = DirectionVector(SourceNodePosition, TargetNodePosition);
+            const sf::Vector2f LineStartPosition = SourceNodePosition + EdgeDirectedVector * 50.f;
+            const sf::Vector2f LineEndPosition = TargetNodePosition - EdgeDirectedVector * 50.f;
 
-            mLexemeRelationshipLines[LexemeRelationshipID].setPosition(SourceNodePosition);
-//            LRLine.setPosition(SourceNodePosition);
+            float NodeDistance = Distance(SourceNodePosition, TargetNodePosition);
+
+            lexeme_relationship_line& LRL = mLexemeRelationshipLines[LexemeRelationshipID];
+            
+            LRL.setPosition(LineStartPosition);
+            LRL.setRotation(VectorAngle(EdgeDirectedVector) * 180.f / 3.14159f);
+            if(NodeDistance >= 100.f)
+            {
+                LRL.setScale(Distance(LineStartPosition, LineEndPosition), 1.f);
+            }
+            else
+            {
+                LRL.setScale(0.f, 1.f);
+            }
         }
     }
     
@@ -468,14 +511,32 @@ int main()
     visual_grammar Grammar;
     Grammar.CreateLexeme(0, lexeme_type::noun, "merchant", RegularIT);
     Grammar.CreateLexeme(1, lexeme_type::verb, "sell", RegularIT);
-    Grammar.CreateLexemeRelationship(0, 1, lexeme_relationship_type::does);
+    Grammar.CreateLexemeRelationship(0, lexeme_relationship_type::does, 1);
+
+    sfg::SFGUI SFGUI;
+    
+    auto TextBox = sfg::Entry::Create("test text");
+    auto Box = sfg::Box::Create(sfg::Box::Orientation::HORIZONTAL, 5.f);
+    Box->Pack(TextBox);
+
+    auto GUIWindow = sfg::Window::Create();
+    GUIWindow->SetTitle( "Hello World example" );
+    GUIWindow->Add( Box );
+
+
+    sfg::Desktop Desktop;
+    Desktop.Add(GUIWindow);
+
+//    sfg::
+    
+    sf::Event Event;
     
     while(Window.isOpen())
     {
-        sf::Event Event;
         while(Window.pollEvent(Event))
         {
             Grammar.ProcessEvent(Event);
+            Desktop.HandleEvent(Event);
 
             if(Event.type == sf::Event::Closed)
             {
@@ -485,11 +546,13 @@ int main()
         
         // NOTE(tyler): Update step
         Grammar.Update(Window);
+        Desktop.Update(1.f);
         
         // NOTE(tyler): Draw step
         Window.clear();
 
         Window.draw(Grammar);
+        SFGUI.Display(Window);
         
         Window.display();
     }
