@@ -203,6 +203,8 @@ public:
     }
 };
 
+inflection_table NullInflectionTable;
+
 enum class lexeme_type
 {
     undefined = 0,
@@ -221,16 +223,17 @@ class lexeme
 {
     friend class lexeme_node;
     friend class LexemeKeyHasher;
-    friend class grammar;
 private:
     lexeme_type mType;
     std::string mLemma;
     inflection_table& mInflectionTable;
 
     std::vector<lexeme*> mInteractions;
-    
+
+public:
     lexeme(const lexeme& Source) : mLemma(Source.mLemma), mInflectionTable(Source.mInflectionTable) {}
     lexeme(lexeme_type Type, std::string Lemma, inflection_table& InflectionTable) : mType(Type), mLemma(Lemma), mInflectionTable(InflectionTable) {}
+    lexeme() : lexeme(lexeme_type::undefined, "", NullInflectionTable) {}
 
     std::string Inflect(feature_structure FS)
     {
@@ -258,12 +261,10 @@ class lexeme_node : public sf::Drawable, public sf::Transformable
 private:
     sf::CircleShape Outline;
     sf::Text Text;
-
-    lexeme& Lexeme;
 public:
     float Scale;
     
-    lexeme_node(lexeme Lexeme, float Scale) : Lexeme(Lexeme), Scale(Scale), Outline(Scale), Text(Lexeme.mLemma, CourierFont, 50.f)
+    lexeme_node(lexeme Lexeme, float Scale) : Scale(Scale), Outline(Scale), Text(Lexeme.mLemma, CourierFont, 50.f)
     {
         Outline.setFillColor(sf::Color::Transparent);
         Outline.setOutlineThickness(-4.f);
@@ -337,7 +338,7 @@ public:
     thing(lexeme Lexeme) : mLexeme(Lexeme) {}
 };
 */
-inflection_table NullInflectionTable;
+
 //lexeme NullLexeme(lexeme_type::undefined, "_null_", NullInflectionTable);
 /*
 class action// : public thing
@@ -356,7 +357,7 @@ public:
     object() : mLexeme(NullLexeme) {}
     object(lexeme& Lexeme) : mLexeme(Lexeme) {}
 };
-*/ //f
+*/
 // Connect specific noun modifiers with specific verbs? (e.g., a "chemical merchant": chemical connects to "sell")
 
 // Noun modifiers can describe a certain characteristic of a noun. Link those explicitly? 
@@ -365,11 +366,11 @@ float Distance(const sf::Vector2f& Source, const sf::Vector2f& Dest)
 {
     return pow(pow(Dest.x - Source.x, 2.f) + pow(Dest.y - Source.y, 2.f), 0.5f);
 }
-
+/*
 void CreateLexeme(std::vector<lexeme>& LexemeVector, std::vector<lexeme_node>& NodeVector, lexeme& Lexeme)
 {
-    LexemeVector.push_back(Lexeme);
-    NodeVector.push_back(lexeme_node(Lexeme, 100.f));
+//    LexemeVector.push_back(Lexeme);
+//    NodeVector.push_back(lexeme_node(Lexeme, 100.f));
 }
 
 void CreateLexemeRelationship(std::vector<lexeme_relationship>& LexemeRelationships,
@@ -382,25 +383,83 @@ void CreateLexemeRelationship(std::vector<lexeme_relationship>& LexemeRelationsh
     LexemeRelationships.push_back(LR);
     LexemeRelationshipLines.push_back(lexeme_relationship_line(LR));
 }
+*/
+
+class visual_grammar;
 
 class grammar
 {
+    friend class visual_grammar;
 private:
-    // NOTE(tyler): The mechanical aspects of the grammar.
     std::vector<lexeme> mLexemes;
     std::vector<lexeme_relationship> mLexemeRelationships;
-
-    // NOTE(tyler): Visual representation of the grammar.
-    std::vector<lexeme_node> mLexemeNodes;
-    std::vector<lexeme_relationship_line> mLexemeRelationshipLines;
 public:
-    grammar() {}
-
     void CreateLexeme(lexeme_type Type, std::string Lemma, inflection_table& InflectionTable)
     {
         mLexemes.push_back(lexeme(Type, Lemma, InflectionTable));
     }
+};
 
+class visual_grammar : public grammar, public sf::Drawable, public sf::Transformable
+{
+private:
+    std::vector<lexeme_node> mLexemeNodes;
+    std::vector<lexeme_relationship_line> mLexemeRelationshipLines;
+
+    lexeme_node* mSelectedNode;
+public:
+    void CreateLexeme(lexeme_type Type, std::string Lemma, inflection_table& InflectionTable)
+    {
+        grammar::CreateLexeme(Type, Lemma, InflectionTable);
+        
+        mLexemeNodes.push_back(lexeme_node(lexeme(Type, Lemma, InflectionTable), 50.f));
+    }
+
+    void ProcessEvent(sf::Event Event)
+    {
+            if(Event.type == sf::Event::MouseButtonPressed)
+            {
+                if(Event.mouseButton.button == sf::Mouse::Left)
+                {
+                    sf::Vector2f MousePosition(Event.mouseButton.x, Event.mouseButton.y);
+                    
+                    for(auto& e : mLexemeNodes)
+                    {
+                        float distance = Distance(MousePosition, e.getPosition());
+                        
+                        if(distance <= e.Scale)
+                        {
+                            mSelectedNode = &e;
+                        }
+                    }
+                }
+            }
+            if(Event.type == sf::Event::MouseButtonReleased)
+            {
+                if(Event.mouseButton.button == sf::Mouse::Left)
+                {
+                    mSelectedNode = nullptr;
+                }
+            }        
+    }
+
+    void Update(sf::RenderWindow& Window)
+    {
+        if(mSelectedNode != nullptr)
+        {
+            mSelectedNode->setPosition(static_cast<sf::Vector2f>(sf::Mouse::getPosition(Window)));
+        }
+    }
+    
+    void sf::Drawable::draw(sf::RenderTarget& Target, sf::RenderStates States) const
+    {
+        States.transform *= getTransform();
+
+        for(auto& e : mLexemeNodes)
+        {
+            Target.draw(e);
+        }
+    }
 };
 
 int main()
@@ -423,9 +482,13 @@ int main()
     std::vector<lexeme_relationship> LexemeRelationships;
     std::vector<lexeme_relationship_line> LexemeRelationshipNodes;
 
-    CreateLexeme(Lexemes, LexemeNodes, lexeme(lexeme_type::noun, "merchant", RegularIT));
-    CreateLexeme(Lexemes, LexemeNodes, lexeme(lexeme_type::verb, "sell", RegularIT));
-    CreateLexemeRelationship(LexemeRelationships, LexemeRelationshipNodes, Lexemes, 0, 1, lexeme_relationship_type::does);
+    visual_grammar Grammar;
+    Grammar.CreateLexeme(lexeme_type::noun, "merchant", RegularIT);
+    Grammar.CreateLexeme(lexeme_type::verb, "sell", RegularIT);
+    
+//    CreateLexeme(Lexemes, LexemeNodes, lexeme(lexeme_type::noun, "merchant", RegularIT));
+//    CreateLexeme(Lexemes, LexemeNodes, lexeme(lexeme_type::verb, "sell", RegularIT));
+//    CreateLexemeRelationship(LexemeRelationships, LexemeRelationshipNodes, Lexemes, 0, 1, lexeme_relationship_type::does);
 
     lexeme_node* SelectedNode = nullptr;
     
@@ -434,30 +497,8 @@ int main()
         sf::Event Event;
         while(Window.pollEvent(Event))
         {
-            if(Event.type == sf::Event::MouseButtonPressed)
-            {
-                if(Event.mouseButton.button == sf::Mouse::Left)
-                {
-                    sf::Vector2f MousePosition(Event.mouseButton.x, Event.mouseButton.y);
-                    
-                    for(auto& e : LexemeNodes)
-                    {
-                        float distance = Distance(MousePosition, e.getPosition());
-                        
-                        if(distance <= e.Scale)
-                        {
-                            SelectedNode = &e;
-                        }
-                    }
-                }
-            }
-            if(Event.type == sf::Event::MouseButtonReleased)
-            {
-                if(Event.mouseButton.button == sf::Mouse::Left)
-                {
-                    SelectedNode = nullptr;
-                }
-            }
+            Grammar.ProcessEvent(Event);
+
             if(Event.type == sf::Event::Closed)
             {
                 Window.close();
@@ -465,23 +506,13 @@ int main()
         }
         
         // NOTE(tyler): Update step
-        if(SelectedNode != nullptr)
-        {
-            SelectedNode->setPosition(static_cast<sf::Vector2f>(sf::Mouse::getPosition(Window)));
-        }
 
+        Grammar.Update(Window);
         
         // NOTE(tyler): Draw step
         Window.clear();
 
-        for(auto& e : LexemeNodes)
-        {
-            Window.draw(e);
-        }
-        for(auto& e : LexemeRelationshipNodes)
-        {
-            Window.draw(e);
-        }
+        Window.draw(Grammar);
         
         Window.display();
     }
